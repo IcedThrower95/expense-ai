@@ -22,7 +22,7 @@ export function SummaryCards({ transactions }: { transactions: Transaction[] }) 
     },
     {
       label: "Top Category",
-      value: top ? CATEGORY_META[top[0] as Transaction["category"]].label : "—",
+      value: top ? CATEGORY_META[top[0] as Transaction["category"]].short : "—",
       hint: top ? formatCurrency(top[1]) : "No spend detected",
       icon: PieChart,
     },
