@@ -37,7 +37,7 @@ export async function extractPdfText(
     onProgress?.(pageNumber, doc.numPages);
   }
 
-  await doc.destroy();
+  await doc.cleanup();
 
   return { text: pageTexts.join("\n"), pages: doc.numPages };
 }
