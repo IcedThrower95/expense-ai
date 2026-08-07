@@ -26,12 +26,20 @@ export const analyzeStatement = createServerFn({ method: "POST" })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error("analyzeStatement failed", error);
-      if (message.includes("429")) {
+      if (message.includes("429") || /rate.?limit/i.test(message)) {
         return { transactions: [], error: "AI rate limit reached. Please try again in a moment." };
       }
-      if (message.includes("402")) {
-        return { transactions: [], error: "AI credits exhausted. Add credits to continue." };
+      if (
+        message.includes("402") ||
+        /payment_required|not enough credits|insufficient/i.test(message)
+      ) {
+        return {
+          transactions: [],
+          error:
+            "AI credits are exhausted for this workspace. Add credits in workspace billing settings, then re-upload — your existing statements stay on the dashboard.",
+        };
       }
       return { transactions: [], error: "The AI could not analyze this statement. Please try again." };
+
     }
   });
