@@ -8,7 +8,7 @@ const AnalyzeInput = z.object({
 export const analyzeStatement = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => AnalyzeInput.parse(input))
   .handler(async ({ data }) => {
-    const apiKey = process.env["LOVABLE_API_KEY"];
+    const apiKey = process.env["GEMINI_API_KEY"];
     if (!apiKey) {
       return { transactions: [], error: "AI is not configured for this project." };
     }
