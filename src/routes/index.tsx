@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useState } from "react";
-import { AlertCircle, RotateCcw, Sparkles } from "lucide-react";
+import { AlertCircle, FileText, RotateCcw, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UploadZone } from "@/components/UploadZone";
 import { SummaryCards } from "@/components/SummaryCards";
@@ -17,13 +17,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Upload a bank statement PDF and get an instant AI-categorized spending dashboard with charts, totals and an editable transaction table.",
+          "Upload one or more bank statement PDFs and get an instant AI-categorized spending dashboard with charts, totals and an editable transaction table.",
       },
       { property: "og:title", content: "AI Expense Analyzer" },
       {
         property: "og:description",
         content:
-          "Drop in a bank statement PDF and see your spending split across shopping, food delivery, dining and daily essentials.",
+          "Drop in bank statement PDFs and see combined spending across shopping, food delivery, dining, daily essentials and money received from parents.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -32,71 +32,108 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+type StatementSource = {
+  id: string;
+  name: string;
+  count: number;
+};
+
 function Index() {
   const analyze = useServerFn(analyzeStatement);
-  const [transactions, setTransactions] = useState<Transaction[] | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [sources, setSources] = useState<StatementSource[]>([]);
   const [isBusy, setIsBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFile = useCallback(
-    async (file: File) => {
+  const handleFiles = useCallback(
+    async (files: File[]) => {
       setError(null);
-      setTransactions(null);
 
-      if (!file.type.includes("pdf") && !file.name.toLowerCase().endsWith(".pdf")) {
-        setError("That doesn't look like a PDF. Please upload a PDF bank statement.");
+      const pdfs = files.filter(
+        (f) => f.type.includes("pdf") || f.name.toLowerCase().endsWith(".pdf"),
+      );
+      if (pdfs.length === 0) {
+        setError("Those don't look like PDFs. Please upload PDF bank statements.");
         return;
       }
 
-      setFileName(file.name);
       setIsBusy(true);
-      setStatus("Reading pages...");
+      const failures: string[] = [];
 
       try {
         const { extractPdfText } = await import("@/lib/pdf-extract");
-        const { text } = await extractPdfText(file, (page, total) =>
-          setStatus(`Reading page ${page} of ${total}...`),
-        );
 
-        if (text.trim().length < 40) {
-          setError(
-            "No readable text found in this PDF. It may be a scanned image or password protected.",
+        for (let i = 0; i < pdfs.length; i++) {
+          const file = pdfs[i]!;
+          const sourceId = `src-${Date.now()}-${i}`;
+          setFileName(
+            pdfs.length > 1 ? `${file.name} (${i + 1} of ${pdfs.length})` : file.name,
           );
-          return;
-        }
+          setStatus("Reading pages...");
 
-        setStatus("Categorizing transactions...");
-        const result = await analyze({ data: { text } });
+          try {
+            const { text } = await extractPdfText(file, (page, total) =>
+              setStatus(`Reading page ${page} of ${total}...`),
+            );
 
-        if (result.error) {
-          setError(result.error);
-          return;
+            if (text.trim().length < 40) {
+              failures.push(`${file.name}: no readable text (scanned or protected PDF)`);
+              continue;
+            }
+
+            setStatus("Categorizing transactions...");
+            const result = await analyze({ data: { text } });
+
+            if (result.error) {
+              failures.push(`${file.name}: ${result.error}`);
+              continue;
+            }
+
+            const parsed = (result.transactions as Transaction[]).map((t, index) => ({
+              ...t,
+              id: `${sourceId}-${index}`,
+            }));
+
+            setTransactions((prev) => [...prev, ...parsed]);
+            setSources((prev) => [
+              ...prev,
+              { id: sourceId, name: file.name, count: parsed.length },
+            ]);
+          } catch (err) {
+            console.error(err);
+            failures.push(`${file.name}: couldn't be read`);
+          }
         }
-        setTransactions(result.transactions as Transaction[]);
-      } catch (err) {
-        console.error(err);
-        setError("We couldn't read that PDF. Try a different statement file.");
       } finally {
         setIsBusy(false);
         setStatus(null);
+        setFileName(null);
       }
+
+      if (failures.length > 0) setError(failures.join(" · "));
     },
     [analyze],
   );
 
   const updateCategory = useCallback((id: string, category: Category) => {
-    setTransactions((prev) =>
-      prev ? prev.map((t) => (t.id === id ? { ...t, category } : t)) : prev,
-    );
+    setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, category } : t)));
+  }, []);
+
+  const removeSource = useCallback((sourceId: string) => {
+    setTransactions((prev) => prev.filter((t) => !t.id.startsWith(`${sourceId}-`)));
+    setSources((prev) => prev.filter((s) => s.id !== sourceId));
   }, []);
 
   const reset = () => {
-    setTransactions(null);
+    setTransactions([]);
+    setSources([]);
     setError(null);
     setFileName(null);
   };
+
+  const hasResults = sources.length > 0;
 
   return (
     <main className="min-h-screen">
@@ -109,21 +146,21 @@ function Index() {
             <div>
               <h1 className="text-lg font-semibold leading-tight">AI Expense Analyzer</h1>
               <p className="text-xs text-muted-foreground">
-                Statement in, categorized spending out
+                Statements in, categorized spending out
               </p>
             </div>
           </div>
-          {transactions ? (
+          {hasResults ? (
             <Button variant="outline" size="sm" onClick={reset}>
               <RotateCcw className="h-4 w-4" />
-              Analyze another
+              Start over
             </Button>
           ) : null}
         </div>
       </header>
 
       <div className="mx-auto max-w-6xl px-5 py-10 sm:py-14">
-        {!transactions ? (
+        {!hasResults ? (
           <div className="mx-auto max-w-2xl">
             {!isBusy ? (
               <div className="mb-8 text-center">
@@ -131,14 +168,15 @@ function Index() {
                   Where did your money actually go?
                 </h2>
                 <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground">
-                  Upload a statement and the AI sorts every line into apparel, electronics, food
-                  delivery, dining out and daily micro-spends.
+                  Upload one or several statements and the AI sorts every line into apparel,
+                  electronics, food delivery, dining out, daily micro-spends and money received
+                  from parents.
                 </p>
               </div>
             ) : null}
 
             <UploadZone
-              onFile={(file) => void handleFile(file)}
+              onFiles={(files) => void handleFiles(files)}
               isBusy={isBusy}
               statusLabel={status}
               fileName={fileName}
@@ -153,6 +191,47 @@ function Index() {
           </div>
         ) : (
           <div className="space-y-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                Statements
+              </span>
+              {sources.map((source) => (
+                <span
+                  key={source.id}
+                  className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary px-3 py-1.5 text-xs"
+                >
+                  <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="max-w-[180px] truncate" title={source.name}>
+                    {source.name}
+                  </span>
+                  <span className="text-muted-foreground">{source.count}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${source.name}`}
+                    onClick={() => removeSource(source.id)}
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            <UploadZone
+              compact
+              onFiles={(files) => void handleFiles(files)}
+              isBusy={isBusy}
+              statusLabel={status}
+              fileName={fileName}
+            />
+
+            {error ? (
+              <div className="flex items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-sm">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <p>{error}</p>
+              </div>
+            ) : null}
+
             <SummaryCards transactions={transactions} />
             <CategoryPie transactions={transactions} />
             <TransactionsTable transactions={transactions} onCategoryChange={updateCategory} />
