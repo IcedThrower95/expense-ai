@@ -88,13 +88,16 @@ export function coerceTransactions(rows: unknown[], offset: number): Transaction
     const amount = toNumber(r["amount"]);
     if (!description || amount <= 0) return;
     const direction = String(r["direction"] ?? "debit").toLowerCase() === "credit" ? "credit" : "debit";
+    const fromParents = direction === "credit" && isParentSender(description);
     out.push({
       id: `txn-${offset + i}`,
       date: String(r["date"] ?? "").trim() || "—",
       description: description.slice(0, 160),
       amount,
       direction,
-      category: normalizeCategory(r["category"]) as Category,
+      category: (fromParents
+        ? "Money Received from Parents"
+        : normalizeCategory(r["category"])) as Category,
     });
   });
   return out;
