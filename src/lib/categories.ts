@@ -84,6 +84,7 @@ export function normalizeCategory(value: unknown): Category {
   if (raw.includes("delivery") || raw.includes("quick")) return "Food - Delivery & Quick Commerce";
   if (raw.includes("dining")) return "Food - Dining Out";
   if (raw.includes("essential") || raw.includes("micro")) return "Daily Essentials & Micro-spends";
+  if (raw.includes("parent")) return "Money Received from Parents";
   return "Uncategorized / Other";
 }
 
