@@ -1,4 +1,4 @@
-import { ArrowDownRight, PieChart, Receipt } from "lucide-react";
+import { ArrowDownRight, HeartHandshake, PieChart, Receipt } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { CATEGORY_META, formatCurrency, type Transaction } from "@/lib/categories";
 
@@ -12,6 +12,9 @@ export function SummaryCards({ transactions }: { transactions: Transaction[] }) 
   }
   const top = [...byCategory.entries()].sort((a, b) => b[1] - a[1])[0];
   const biggest = [...debits].sort((a, b) => b.amount - a.amount)[0];
+
+  const parentTxns = transactions.filter((t) => t.category === "Money Received from Parents");
+  const fromParents = parentTxns.reduce((sum, t) => sum + t.amount, 0);
 
   const items = [
     {
@@ -34,8 +37,17 @@ export function SummaryCards({ transactions }: { transactions: Transaction[] }) 
     },
   ];
 
+  if (fromParents > 0) {
+    items.push({
+      label: "From Parents",
+      value: formatCurrency(fromParents),
+      hint: `${parentTxns.length} transfers received`,
+      icon: HeartHandshake,
+    });
+  }
+
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((item) => (
         <Card
           key={item.label}
