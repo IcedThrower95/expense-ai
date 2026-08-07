@@ -1,6 +1,6 @@
 import { streamText } from "ai";
 import { createResponsesProvider } from "./ai-gateway.server";
-import { normalizeCategory, type Transaction, type Category } from "./categories";
+import { normalizeCategory, isParentSender, type Transaction, type Category } from "./categories";
 
 const SYSTEM_PROMPT = `You are a meticulous financial statement parser and spend categorizer for Indian bank/credit-card statements.
 
@@ -25,11 +25,15 @@ CATEGORY RULES (strict):
 4. "Food - Dining Out" — physically visited restaurants, cafes, bars, pubs, bakeries, food courts, hotels' F&B, coffee chains (Starbucks, Third Wave, Barista, CCD), breweries.
 5. "Daily Essentials & Micro-spends" — small-value transactions (typically under 500), generic person-to-person UPI transfers with no clear merchant,
    local kirana/grocery shops, street vendors and street food (pani puri, chai, tea stall, juice, vada pav), auto/cab micro-fares, milk, water cans, paan shops, petty cash.
-6. "Uncategorized / Other" — use ONLY when none of the above plausibly applies (rent, EMIs, salary credits, fuel, utilities, insurance, medical, travel, ATM withdrawals, card payments).
+6. "Money Received from Parents" — ANY credit/incoming transfer where the sender name contains
+   Pallavi, Sudhakara / Sudhakar, ACS Reddy, or Nagendra Mani (in any spelling/casing, with or without
+   initials, UPI handles or bank suffixes). These are always direction "credit".
+7. "Uncategorized / Other" — use ONLY when none of the above plausibly applies (rent, EMIs, salary credits, fuel, utilities, insurance, medical, travel, ATM withdrawals, card payments).
 
 Disambiguation:
 - A merchant that both delivers and has outlets: if the narration contains a delivery/quick-commerce keyword from rule 3, use rule 3; otherwise use rule 4.
 - Amount matters: an unnamed UPI debit under 500 belongs in rule 5, even if the merchant is unclear.
+- Rule 6 takes priority over every other rule when one of those sender names appears.
 - Never invent transactions. Never merge two transactions into one.
 
 OUTPUT FORMAT: return ONLY a JSON array (no prose, no markdown fences) of objects shaped like:
@@ -84,13 +88,16 @@ export function coerceTransactions(rows: unknown[], offset: number): Transaction
     const amount = toNumber(r["amount"]);
     if (!description || amount <= 0) return;
     const direction = String(r["direction"] ?? "debit").toLowerCase() === "credit" ? "credit" : "debit";
+    const fromParents = direction === "credit" && isParentSender(description);
     out.push({
       id: `txn-${offset + i}`,
       date: String(r["date"] ?? "").trim() || "—",
       description: description.slice(0, 160),
       amount,
       direction,
-      category: normalizeCategory(r["category"]) as Category,
+      category: (fromParents
+        ? "Money Received from Parents"
+        : normalizeCategory(r["category"])) as Category,
     });
   });
   return out;

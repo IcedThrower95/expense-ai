@@ -4,8 +4,24 @@ export const CATEGORIES = [
   "Food - Delivery & Quick Commerce",
   "Food - Dining Out",
   "Daily Essentials & Micro-spends",
+  "Money Received from Parents",
   "Uncategorized / Other",
 ] as const;
+
+export const PARENT_SENDERS = [
+  "pallavi",
+  "sudhakara",
+  "sudhakar",
+  "acs reddy",
+  "acsreddy",
+  "nagendra mani",
+  "nagendramani",
+];
+
+export function isParentSender(description: string) {
+  const d = description.toLowerCase();
+  return PARENT_SENDERS.some((name) => d.includes(name));
+}
 
 export type Category = (typeof CATEGORIES)[number];
 
@@ -38,6 +54,11 @@ export const CATEGORY_META: Record<
     short: "Daily Essentials",
     token: "var(--chart-5)",
   },
+  "Money Received from Parents": {
+    label: "Money Received from Parents",
+    short: "From Parents",
+    token: "var(--chart-7)",
+  },
   "Uncategorized / Other": {
     label: "Uncategorized / Other",
     short: "Other",
@@ -63,6 +84,7 @@ export function normalizeCategory(value: unknown): Category {
   if (raw.includes("delivery") || raw.includes("quick")) return "Food - Delivery & Quick Commerce";
   if (raw.includes("dining")) return "Food - Dining Out";
   if (raw.includes("essential") || raw.includes("micro")) return "Daily Essentials & Micro-spends";
+  if (raw.includes("parent")) return "Money Received from Parents";
   return "Uncategorized / Other";
 }
 
