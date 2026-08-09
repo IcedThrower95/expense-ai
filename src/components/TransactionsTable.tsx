@@ -25,6 +25,7 @@ import {
   type Category,
   type Transaction,
 } from "@/lib/categories";
+import { buildTransactionsCsv, downloadCsv } from "@/lib/export-csv";
 
 const PAGE_SIZE = 10;
 
@@ -81,19 +82,88 @@ export function TransactionsTable({ transactions, onCategoryChange }: Props) {
             {filtered.length} rows · category is editable
           </p>
         </div>
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <div className="relative w-full sm:w-56">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Search description..."
+              className="pl-9"
+            />
+          </div>
+
+          <Select
+            value={categoryFilter}
+            onValueChange={(value) => {
+              setCategoryFilter(value as "all" | Category);
               setPage(0);
             }}
-            placeholder="Search description..."
-            className="pl-9"
-          />
+          >
+            <SelectTrigger className="h-9 w-[190px]">
+              <SelectValue placeholder="All categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              {CATEGORIES.map((category) => (
+                <SelectItem key={category} value={category}>
+                  {CATEGORY_META[category].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={typeFilter}
+            onValueChange={(value) => {
+              setTypeFilter(value as "all" | "debit" | "credit");
+              setPage(0);
+            }}
+          >
+            <SelectTrigger className="h-9 w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="debit">Debits</SelectItem>
+              <SelectItem value="credit">Credits</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={sort} onValueChange={(value) => setSort(value as SortKey)}>
+            <SelectTrigger className="h-9 w-[160px]">
+              <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date-desc">Newest first</SelectItem>
+              <SelectItem value="date-asc">Oldest first</SelectItem>
+              <SelectItem value="amount-desc">Amount: high to low</SelectItem>
+              <SelectItem value="amount-asc">Amount: low to high</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            disabled={filtered.length === 0}
+            onClick={() =>
+              downloadCsv(
+                `transactions-${new Date().toISOString().slice(0, 10)}.csv`,
+                buildTransactionsCsv(filtered),
+              )
+            }
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
         </div>
       </div>
+
 
       <div className="mt-5 -mx-6 overflow-x-auto px-6">
         <Table>
