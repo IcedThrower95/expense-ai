@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { ArrowUpDown, Download, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -25,8 +25,11 @@ import {
   type Category,
   type Transaction,
 } from "@/lib/categories";
+import { buildTransactionsCsv, downloadCsv } from "@/lib/export-csv";
 
 const PAGE_SIZE = 10;
+
+type SortKey = "date-desc" | "date-asc" | "amount-desc" | "amount-asc";
 
 type Props = {
   transactions: Transaction[];
@@ -36,14 +39,35 @@ type Props = {
 export function TransactionsTable({ transactions, onCategoryChange }: Props) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
+  const [categoryFilter, setCategoryFilter] = useState<"all" | Category>("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "debit" | "credit">("all");
+  const [sort, setSort] = useState<SortKey>("date-desc");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return transactions;
-    return transactions.filter(
-      (t) => t.description.toLowerCase().includes(q) || t.category.toLowerCase().includes(q),
-    );
-  }, [transactions, query]);
+    const rows = transactions.filter((t) => {
+      if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
+      if (typeFilter !== "all" && t.direction !== typeFilter) return false;
+      if (!q) return true;
+      return (
+        t.description.toLowerCase().includes(q) || t.category.toLowerCase().includes(q)
+      );
+    });
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+      switch (sort) {
+        case "amount-desc":
+          return b.amount - a.amount;
+        case "amount-asc":
+          return a.amount - b.amount;
+        case "date-asc":
+          return a.date.localeCompare(b.date);
+        default:
+          return b.date.localeCompare(a.date);
+      }
+    });
+    return sorted;
+  }, [transactions, query, categoryFilter, typeFilter, sort]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
@@ -58,19 +82,88 @@ export function TransactionsTable({ transactions, onCategoryChange }: Props) {
             {filtered.length} rows · category is editable
           </p>
         </div>
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <div className="relative w-full sm:w-56">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Search description..."
+              className="pl-9"
+            />
+          </div>
+
+          <Select
+            value={categoryFilter}
+            onValueChange={(value) => {
+              setCategoryFilter(value as "all" | Category);
               setPage(0);
             }}
-            placeholder="Search description..."
-            className="pl-9"
-          />
+          >
+            <SelectTrigger className="h-9 w-[190px]">
+              <SelectValue placeholder="All categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              {CATEGORIES.map((category) => (
+                <SelectItem key={category} value={category}>
+                  {CATEGORY_META[category].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={typeFilter}
+            onValueChange={(value) => {
+              setTypeFilter(value as "all" | "debit" | "credit");
+              setPage(0);
+            }}
+          >
+            <SelectTrigger className="h-9 w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="debit">Debits</SelectItem>
+              <SelectItem value="credit">Credits</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={sort} onValueChange={(value) => setSort(value as SortKey)}>
+            <SelectTrigger className="h-9 w-[160px]">
+              <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date-desc">Newest first</SelectItem>
+              <SelectItem value="date-asc">Oldest first</SelectItem>
+              <SelectItem value="amount-desc">Amount: high to low</SelectItem>
+              <SelectItem value="amount-asc">Amount: low to high</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            disabled={filtered.length === 0}
+            onClick={() =>
+              downloadCsv(
+                `transactions-${new Date().toISOString().slice(0, 10)}.csv`,
+                buildTransactionsCsv(filtered),
+              )
+            }
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
         </div>
       </div>
+
 
       <div className="mt-5 -mx-6 overflow-x-auto px-6">
         <Table>
