@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { ArrowUpDown, Download, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,8 @@ import {
 
 const PAGE_SIZE = 10;
 
+type SortKey = "date-desc" | "date-asc" | "amount-desc" | "amount-asc";
+
 type Props = {
   transactions: Transaction[];
   onCategoryChange: (id: string, category: Category) => void;
@@ -36,14 +38,35 @@ type Props = {
 export function TransactionsTable({ transactions, onCategoryChange }: Props) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
+  const [categoryFilter, setCategoryFilter] = useState<"all" | Category>("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "debit" | "credit">("all");
+  const [sort, setSort] = useState<SortKey>("date-desc");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return transactions;
-    return transactions.filter(
-      (t) => t.description.toLowerCase().includes(q) || t.category.toLowerCase().includes(q),
-    );
-  }, [transactions, query]);
+    const rows = transactions.filter((t) => {
+      if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
+      if (typeFilter !== "all" && t.direction !== typeFilter) return false;
+      if (!q) return true;
+      return (
+        t.description.toLowerCase().includes(q) || t.category.toLowerCase().includes(q)
+      );
+    });
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+      switch (sort) {
+        case "amount-desc":
+          return b.amount - a.amount;
+        case "amount-asc":
+          return a.amount - b.amount;
+        case "date-asc":
+          return a.date.localeCompare(b.date);
+        default:
+          return b.date.localeCompare(a.date);
+      }
+    });
+    return sorted;
+  }, [transactions, query, categoryFilter, typeFilter, sort]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
