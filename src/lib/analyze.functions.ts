@@ -8,7 +8,7 @@ const AnalyzeInput = z.object({
 export const analyzeStatement = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => AnalyzeInput.parse(input))
   .handler(async ({ data }) => {
-    const apiKey = process.env["GEMINI_API_KEY"];
+    const apiKey = process.env["LOVABLE_API_KEY"];
     if (!apiKey) {
       return { transactions: [], error: "AI is not configured for this project." };
     }
@@ -26,20 +26,12 @@ export const analyzeStatement = createServerFn({ method: "POST" })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error("analyzeStatement failed", error);
-      if (message.includes("429") || /rate.?limit/i.test(message)) {
+      if (message.includes("429")) {
         return { transactions: [], error: "AI rate limit reached. Please try again in a moment." };
       }
-      if (
-        message.includes("402") ||
-        /payment_required|not enough credits|insufficient/i.test(message)
-      ) {
-        return {
-          transactions: [],
-          error:
-            "AI credits are exhausted for this workspace. Add credits in workspace billing settings, then re-upload — your existing statements stay on the dashboard.",
-        };
+      if (message.includes("402")) {
+        return { transactions: [], error: "AI credits exhausted. Add credits to continue." };
       }
       return { transactions: [], error: "The AI could not analyze this statement. Please try again." };
-
     }
   });

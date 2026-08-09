@@ -129,7 +129,6 @@ export async function analyzeStatementText(text: string, apiKey: string): Promis
   const chunks = chunkStatementText(text).slice(0, 12);
 
   const results: unknown[][] = [];
-  const errors: unknown[] = [];
   const batchSize = 3;
   for (let i = 0; i < chunks.length; i += batchSize) {
     const batch = chunks.slice(i, i + batchSize);
@@ -139,19 +138,12 @@ export async function analyzeStatementText(text: string, apiKey: string): Promis
           return await analyzeChunk(provider, c);
         } catch (error) {
           console.error("chunk analysis failed", error);
-          errors.push(error);
           return [] as unknown[];
         }
       }),
     );
     results.push(...settled);
   }
-
-  // If every chunk failed, surface the real reason (rate limit, credits, etc.)
-  if (errors.length > 0 && errors.length === chunks.length) {
-    throw errors[0] instanceof Error ? errors[0] : new Error(String(errors[0]));
-  }
-
 
   const transactions: Transaction[] = [];
   for (const rows of results) {
