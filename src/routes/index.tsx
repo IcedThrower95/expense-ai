@@ -1,14 +1,25 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { AlertCircle, FileText, RotateCcw, Sparkles, X } from "lucide-react";
+import { AlertCircle, FileText, LogOut, RotateCcw, Sparkles, X } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { UploadZone } from "@/components/UploadZone";
 import { SummaryCards } from "@/components/SummaryCards";
 import { CategoryPie } from "@/components/CategoryPie";
 import { TransactionsTable } from "@/components/TransactionsTable";
+import { HistoryPanel } from "@/components/HistoryPanel";
 import { analyzeStatement } from "@/lib/analyze.functions";
 import type { Category, Transaction } from "@/lib/categories";
+import { useSession } from "@/hooks/useSession";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  loadSavedStatement,
+  saveStatement,
+  updateStatementTransactions,
+  type SavedStatement,
+} from "@/lib/statements-store";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -36,10 +47,14 @@ type StatementSource = {
   id: string;
   name: string;
   count: number;
+  saved: boolean;
 };
 
 function Index() {
   const analyze = useServerFn(analyzeStatement);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user } = useSession();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [sources, setSources] = useState<StatementSource[]>([]);
   const [isBusy, setIsBusy] = useState(false);
@@ -67,10 +82,8 @@ function Index() {
 
         for (let i = 0; i < pdfs.length; i++) {
           const file = pdfs[i]!;
-          const sourceId = `src-${Date.now()}-${i}`;
-          setFileName(
-            pdfs.length > 1 ? `${file.name} (${i + 1} of ${pdfs.length})` : file.name,
-          );
+          let sourceId = `src-${Date.now()}-${i}`;
+          setFileName(pdfs.length > 1 ? `${file.name} (${i + 1} of ${pdfs.length})` : file.name);
           setStatus("Reading pages...");
 
           try {
@@ -91,15 +104,33 @@ function Index() {
               continue;
             }
 
-            const parsed = (result.transactions as Transaction[]).map((t, index) => ({
+            let parsed = (result.transactions as Transaction[]).map((t, index) => ({
               ...t,
               id: `${sourceId}-${index}`,
             }));
 
+            let saved = false;
+            if (user) {
+              try {
+                setStatus("Saving to your history...");
+                const savedId = await saveStatement({
+                  userId: user.id,
+                  fileName: file.name,
+                  transactions: parsed,
+                });
+                sourceId = savedId;
+                saved = true;
+                parsed = parsed.map((t, index) => ({ ...t, id: `${savedId}-${index}` }));
+                await queryClient.invalidateQueries({ queryKey: ["statements"] });
+              } catch {
+                toast.error(`Couldn't save ${file.name} to your history`);
+              }
+            }
+
             setTransactions((prev) => [...prev, ...parsed]);
             setSources((prev) => [
               ...prev,
-              { id: sourceId, name: file.name, count: parsed.length },
+              { id: sourceId, name: file.name, count: parsed.length, saved },
             ]);
           } catch (err) {
             console.error(err);
@@ -114,17 +145,63 @@ function Index() {
 
       if (failures.length > 0) setError(failures.join(" · "));
     },
-    [analyze],
+    [analyze, queryClient, user],
   );
 
-  const updateCategory = useCallback((id: string, category: Category) => {
-    setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, category } : t)));
-  }, []);
+  const updateCategory = useCallback(
+    (id: string, category: Category) => {
+      setTransactions((prev) => {
+        const next = prev.map((t) => (t.id === id ? { ...t, category } : t));
+        const source = sources.find((s) => s.saved && id.startsWith(`${s.id}-`));
+        if (source) {
+          const rows = next.filter((t) => t.id.startsWith(`${source.id}-`));
+          void updateStatementTransactions(source.id, rows).catch(() =>
+            toast.error("Couldn't save that category change"),
+          );
+        }
+        return next;
+      });
+    },
+    [sources],
+  );
 
   const removeSource = useCallback((sourceId: string) => {
     setTransactions((prev) => prev.filter((t) => !t.id.startsWith(`${sourceId}-`)));
     setSources((prev) => prev.filter((s) => s.id !== sourceId));
   }, []);
+
+  const openSaved = useCallback(
+    async (statement: SavedStatement) => {
+      try {
+        const detail = await loadSavedStatement(statement.id);
+        setTransactions((prev) => [
+          ...prev.filter((t) => !t.id.startsWith(`${detail.id}-`)),
+          ...detail.transactions,
+        ]);
+        setSources((prev) => [
+          ...prev.filter((s) => s.id !== detail.id),
+          {
+            id: detail.id,
+            name: detail.fileName,
+            count: detail.transactions.length,
+            saved: true,
+          },
+        ]);
+      } catch {
+        toast.error("Couldn't open that saved statement");
+      }
+    },
+    [],
+  );
+
+  const signOut = async () => {
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    await supabase.auth.signOut();
+    setTransactions([]);
+    setSources([]);
+    navigate({ to: "/auth", replace: true });
+  };
 
   const reset = () => {
     setTransactions([]);
@@ -150,18 +227,35 @@ function Index() {
               </p>
             </div>
           </div>
-          {hasResults ? (
-            <Button variant="outline" size="sm" onClick={reset}>
-              <RotateCcw className="h-4 w-4" />
-              Start over
-            </Button>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {hasResults ? (
+              <Button variant="outline" size="sm" onClick={reset}>
+                <RotateCcw className="h-4 w-4" />
+                Clear view
+              </Button>
+            ) : null}
+            {user ? (
+              <>
+                <span className="hidden max-w-[180px] truncate text-xs text-muted-foreground sm:inline">
+                  {user.email}
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => void signOut()}>
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </Button>
+              </>
+            ) : (
+              <Button asChild size="sm">
+                <Link to="/auth">Sign in</Link>
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-5 py-10 sm:py-14">
+      <div className="mx-auto max-w-6xl space-y-6 px-5 py-10 sm:py-14">
         {!hasResults ? (
-          <div className="mx-auto max-w-2xl">
+          <div className="mx-auto max-w-2xl space-y-6">
             {!isBusy ? (
               <div className="mb-8 text-center">
                 <h2 className="text-3xl font-semibold sm:text-4xl">
@@ -183,14 +277,29 @@ function Index() {
             />
 
             {error ? (
-              <div className="mt-6 flex items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-sm">
+              <div className="flex items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-sm">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                 <p>{error}</p>
               </div>
             ) : null}
+
+            {user ? (
+              <HistoryPanel
+                enabled
+                openIds={sources.map((s) => s.id)}
+                onOpen={(s) => void openSaved(s)}
+              />
+            ) : (
+              <p className="text-center text-xs text-muted-foreground">
+                <Link to="/auth" className="text-primary hover:underline">
+                  Sign in
+                </Link>{" "}
+                to save every analyzed statement and re-open it later.
+              </p>
+            )}
           </div>
         ) : (
-          <div className="space-y-6">
+          <>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs uppercase tracking-widest text-muted-foreground">
                 Statements
@@ -235,7 +344,15 @@ function Index() {
             <SummaryCards transactions={transactions} />
             <CategoryPie transactions={transactions} />
             <TransactionsTable transactions={transactions} onCategoryChange={updateCategory} />
-          </div>
+
+            {user ? (
+              <HistoryPanel
+                enabled
+                openIds={sources.map((s) => s.id)}
+                onOpen={(s) => void openSaved(s)}
+              />
+            ) : null}
+          </>
         )}
       </div>
     </main>
