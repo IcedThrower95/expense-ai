@@ -127,9 +127,9 @@ export function HistoryPanel({ enabled, openIds, onOpen }: HistoryPanelProps) {
           No saved statements match your search or date range.
         </p>
       ) : (
-
         <ul className="mt-5 space-y-2">
-          {data.map((item) => {
+          {filtered.map((item) => {
+
             const isOpen = openIds.includes(item.id);
             return (
               <li
