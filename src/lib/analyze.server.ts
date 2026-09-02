@@ -1,5 +1,6 @@
 import { streamText } from "ai";
-import { createResponsesProvider } from "./ai-gateway.server";
+import { createGeminiProvider } from "./ai-gateway.server";
+
 import { normalizeCategory, isParentSender, type Transaction, type Category } from "./categories";
 
 const SYSTEM_PROMPT = `You are a meticulous financial statement parser and spend categorizer for Indian bank/credit-card statements.
@@ -104,28 +105,21 @@ export function coerceTransactions(rows: unknown[], offset: number): Transaction
 }
 
 async function analyzeChunk(
-  provider: ReturnType<typeof createResponsesProvider>,
+  provider: ReturnType<typeof createGeminiProvider>,
   chunk: string,
 ): Promise<unknown[]> {
   const result = streamText({
-    model: provider.responses("openai/gpt-5.6-sol"),
+    model: provider("gemini-2.5-flash"),
     system: SYSTEM_PROMPT,
     prompt: `Statement text:\n\n${chunk}`,
-    providerOptions: {
-      openai: {
-        forceReasoning: true,
-        reasoningEffort: "low",
-        reasoningSummary: "auto",
-        store: false,
-      },
-    },
   });
   const text = await result.text;
   return parseJsonArray(text);
 }
 
 export async function analyzeStatementText(text: string, apiKey: string): Promise<Transaction[]> {
-  const provider = createResponsesProvider(apiKey);
+  const provider = createGeminiProvider(apiKey);
+
   const chunks = chunkStatementText(text).slice(0, 12);
 
   const results: unknown[][] = [];
