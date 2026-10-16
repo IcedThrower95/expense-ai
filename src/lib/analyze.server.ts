@@ -1,4 +1,4 @@
-import { streamText } from "ai";
+import { generateText } from "ai";
 import { createGeminiProvider } from "./ai-gateway.server";
 
 import { normalizeCategory, isParentSender, type Transaction, type Category } from "./categories";
@@ -108,12 +108,12 @@ async function analyzeChunk(
   provider: ReturnType<typeof createGeminiProvider>,
   chunk: string,
 ): Promise<unknown[]> {
-  const result = streamText({
-    model: provider("gemini-2.5-flash"),
+  console.log(`[analyze-chunk] sending chunk of ${chunk.length} chars to Gemini...`);
+  const { text } = await generateText({
+    model: provider("gemini-3.8-flash"),
     system: SYSTEM_PROMPT,
     prompt: `Statement text:\n\n${chunk}`,
   });
-  const text = await result.text;
   console.log(
     `[analyze-chunk] chunkLen=${chunk.length} responseLen=${text.length}`,
   );
@@ -129,6 +129,7 @@ export async function analyzeStatementText(text: string, apiKey: string): Promis
   const chunks = chunkStatementText(text).slice(0, 12);
 
   const results: unknown[][] = [];
+  const errors: Error[] = [];
   const batchSize = 3;
   for (let i = 0; i < chunks.length; i += batchSize) {
     const batch = chunks.slice(i, i + batchSize);
@@ -138,11 +139,19 @@ export async function analyzeStatementText(text: string, apiKey: string): Promis
           return await analyzeChunk(provider, c);
         } catch (error) {
           console.error("chunk analysis failed", error);
+          errors.push(error instanceof Error ? error : new Error(String(error)));
           return [] as unknown[];
         }
       }),
     );
     results.push(...settled);
+  }
+
+  // If every single chunk failed, rethrow the first error so the caller
+  // sees the real problem (bad API key, auth failure, etc.) instead of
+  // a misleading "no transactions found" message.
+  if (errors.length > 0 && errors.length >= chunks.length) {
+    throw errors[0];
   }
 
   const transactions: Transaction[] = [];

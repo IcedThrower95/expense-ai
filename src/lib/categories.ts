@@ -16,7 +16,30 @@ export const PARENT_SENDERS = [
   "acsreddy",
   "nagendra mani",
   "nagendramani",
+  "chandra sekher",
+  "chandrasekher",
+  "harinanda",
+  "hari nanda",
 ];
+
+/** Structured family members for the Family page breakdown. */
+export const FAMILY_MEMBERS = [
+  { id: "pallavi", label: "Pallavi Reddy", keywords: ["pallavi"], color: "var(--chart-1)" },
+  { id: "sudhakara", label: "Sudhakara Reddy", keywords: ["sudhakara", "sudhakar"], color: "var(--chart-2)" },
+  { id: "nagendra", label: "Nagendra Mani", keywords: ["nagendra mani", "nagendramani"], color: "var(--chart-3)" },
+  { id: "acs", label: "ACS Reddy", keywords: ["acs reddy", "acsreddy", "chandra sekher", "chandrasekher"], color: "var(--chart-4)" },
+  { id: "harinanda", label: "Harinanda Reddy", keywords: ["harinanda", "hari nanda"], color: "var(--chart-5)" },
+] as const;
+
+export type FamilyMemberId = (typeof FAMILY_MEMBERS)[number]["id"];
+
+export function matchFamilyMember(description: string): FamilyMemberId | null {
+  const d = description.toLowerCase();
+  for (const member of FAMILY_MEMBERS) {
+    if (member.keywords.some((kw) => d.includes(kw))) return member.id;
+  }
+  return null;
+}
 
 export function isParentSender(description: string) {
   const d = description.toLowerCase();

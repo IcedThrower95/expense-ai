@@ -40,6 +40,6 @@ export const analyzeStatement = createServerFn({ method: "POST" })
       if (message.includes("402")) {
         return { transactions: [], error: "AI credits exhausted. Add credits to continue." };
       }
-      return { transactions: [], error: "The AI could not analyze this statement. Please try again." };
+      return { transactions: [], error: `AI error: ${message}` };
     }
   });

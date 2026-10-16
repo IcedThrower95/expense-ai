@@ -1,8 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
-import { AlertCircle, FileText, LogOut, RotateCcw, Sparkles, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertCircle, FileText, HeartHandshake, LogOut, RotateCcw, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { UploadZone } from "@/components/UploadZone";
@@ -20,6 +20,7 @@ import {
   updateStatementTransactions,
   type SavedStatement,
 } from "@/lib/statements-store";
+import { setSharedTransactions } from "@/lib/transactions-store";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -61,6 +62,11 @@ function Index() {
   const [status, setStatus] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Keep the shared store in sync so the /family route can access transactions
+  useEffect(() => {
+    setSharedTransactions(transactions);
+  }, [transactions]);
 
   const handleFiles = useCallback(
     async (files: File[]) => {
@@ -342,6 +348,23 @@ function Index() {
             ) : null}
 
             <SummaryCards transactions={transactions} />
+
+            {transactions.some((t) => t.category === "Money Received from Parents") ? (
+              <Link
+                to="/family"
+                className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 text-sm transition-colors hover:bg-primary/10"
+              >
+                <HeartHandshake className="h-5 w-5 text-primary" />
+                <div className="flex-1">
+                  <span className="font-medium">Family Transactions</span>
+                  <span className="ml-2 text-muted-foreground">
+                    See detailed breakdown of money received from & sent to family
+                  </span>
+                </div>
+                <span className="text-xs text-primary">View →</span>
+              </Link>
+            ) : null}
+
             <CategoryPie transactions={transactions} />
             <TransactionsTable transactions={transactions} onCategoryChange={updateCategory} />
 
