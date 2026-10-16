@@ -13,14 +13,21 @@ export const analyzeStatement = createServerFn({ method: "POST" })
       return { transactions: [], error: "Gemini API key is not configured for this project." };
     }
 
-    const { analyzeStatementText } = await import("./analyze.server");
+    const { analyzeStatementText, chunkStatementText } = await import("./analyze.server");
+    const chunks = chunkStatementText(data.text);
+    console.log(
+      `[analyze] received text length=${data.text.length} chunks=${chunks.length}`,
+    );
+    console.log("[analyze] first 500 chars of text:", data.text.slice(0, 500));
     try {
       const transactions = await analyzeStatementText(data.text, apiKey);
+      console.log(`[analyze] parsed ${transactions.length} transactions`);
       if (transactions.length === 0) {
         return {
           transactions: [],
           error:
-            "No transactions could be read from this statement. It may be a scanned image or an unsupported layout.",
+            `No transactions could be read from this statement (extracted ${data.text.length} chars). ` +
+            `The layout may not be recognized. Check the browser console (F12) for "[pdf-extract]" logs to see the raw text.`,
         };
       }
       return { transactions, error: null as string | null };

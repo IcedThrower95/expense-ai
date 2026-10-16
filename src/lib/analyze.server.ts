@@ -114,7 +114,13 @@ async function analyzeChunk(
     prompt: `Statement text:\n\n${chunk}`,
   });
   const text = await result.text;
-  return parseJsonArray(text);
+  console.log(
+    `[analyze-chunk] chunkLen=${chunk.length} responseLen=${text.length}`,
+  );
+  console.log("[analyze-chunk] AI response (first 500):", text.slice(0, 500));
+  const parsed = parseJsonArray(text);
+  console.log(`[analyze-chunk] parsed ${parsed.length} items from chunk`);
+  return parsed;
 }
 
 export async function analyzeStatementText(text: string, apiKey: string): Promise<Transaction[]> {
